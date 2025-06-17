@@ -99,8 +99,8 @@ startup
     settings.Add("Autosplit Options", true, "Autosplit Options");
     //Child 1 to Parent 1
     //settings.Add("ChapterSplit", true, "Split on Region change", "Autosplit Options");
-    settings.Add("SubchapterSplit", true, "Split on Subregion change", "Autosplit Options");
-    settings.Add("ObjectiveSplit", true, "Split on Level change", "Autosplit Options");
+    settings.Add("SubchapterSplit", true, "Split on Subchapter Change (Somewhat Often)", "Autosplit Options");
+    settings.Add("ObjectiveSplit", true, "Split on Objective change (Extremely Often)", "Autosplit Options");
 
     //Settings group for game related info
     settings.Add("gameInfo", true, "Various Game Info");
@@ -108,6 +108,7 @@ startup
     settings.Add("Chapter: ", true, "Current Chapter", "gameInfo");
     settings.Add("Sub-Chapter: ", true, "Current Sub-Chapter", "gameInfo");
     settings.Add("Objective: ", true, "Current Pinned Objective", "gameInfo");
+    settings.Add("Speed: ", false, "Player Speed - Janky AF", "gameInfo");
 
     //Settings group for Unity related info
     settings.Add("UnityInfo", false, "Unity Scene Info");
@@ -128,7 +129,7 @@ init
     //starting the stopwatch for the splitter cooldown
     vars.SplitCooldownTimer.Start();
     vars.PreventStartSplitTimer.Start();
-    
+
 
     //Helper function that sets or removes text depending on whether the setting is enabled - only works in `init` or later because `startup` cannot read setting values
     vars.SetTextIfEnabled = (Action<string, object>)((text1, text2) =>
@@ -144,6 +145,7 @@ init
     {
     var OM = mono["ObjectiveManager"];
     var FPSC = mono["FirstPersonController"];
+    var TMPro = mono["Unity.TextMeshPro", "TMPro.TextMeshProUGUI"];
     vars.Helper["chapterTitle"] = OM.MakeString("Instance", "currentChapterTitle");
     vars.Helper["chapterSubtitle"] = OM.MakeString("Instance", "currentChapterSubtitle");
     vars.Helper["objective"] = OM.MakeString("Instance", "currentObjective");
@@ -162,6 +164,13 @@ update
 {
     vars.Watch(old, current, "objective");
     vars.Watch(old, current, "Speed");
+
+    if (current.loadingScene == "MainMenu" && current.activeScene == "DemoEnding") 
+	{
+		print("End Split Offset Executed Successfully");
+		const double Offset = 39.367;
+		timer.LoadingTimes += TimeSpan.FromSeconds(Offset);
+	}
 
     //error handling
     if(current.chapterTitle == null){current.chapterTitle = "null";}
@@ -214,6 +223,7 @@ onStart
 split
 {
     if(vars.SplitCooldownTimer.Elapsed.TotalSeconds < 5 || vars.PreventStartSplitTimer.Elapsed.TotalSeconds < 10) {return false;}
+
     if
     (
         settings["SubchapterSplit"] && current.chapterSubtitle != old.chapterSubtitle && old.chapterSubtitle != "null" ||
@@ -245,4 +255,3 @@ exit
     if (settings["removeTexts"])
     vars.RemoveAllTexts();
 }
-
