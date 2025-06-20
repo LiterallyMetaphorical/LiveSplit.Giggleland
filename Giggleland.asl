@@ -2,12 +2,10 @@ state("Giggleland Demo") { }
 
 startup
 {
-    //Timing offset and flag
-    vars.startTimeOffsetFlag = false;
-    vars.startTimeOffset = -0.260;
-
+    //some helpful variables for use later in splitting and start
     vars.SplitCooldownTimer = new Stopwatch();
     vars.PreventStartSplitTimer = new Stopwatch();
+    vars.isAtStartOfRun = true;
 
     //Load asl-help binary and instantiate it - will inject code into the asl in the background
     Assembly.Load(File.ReadAllBytes("Components/asl-help")).CreateInstance("Unity");
@@ -108,7 +106,10 @@ startup
     settings.Add("Chapter: ", true, "Current Chapter", "gameInfo");
     settings.Add("Sub-Chapter: ", true, "Current Sub-Chapter", "gameInfo");
     settings.Add("Objective: ", true, "Current Pinned Objective", "gameInfo");
+    settings.Add("moveX", false, "Player X Position", "gameInfo");
+    settings.Add("moveY", false, "Player Y Position", "gameInfo");
     settings.Add("Speed: ", false, "Player Speed - Janky AF", "gameInfo");
+    settings.Add("isAtStartOfRun", false, "Is Player At Start of Run?", "gameInfo");
 
     //Settings group for Unity related info
     settings.Add("UnityInfo", false, "Unity Scene Info");
@@ -130,7 +131,6 @@ init
     vars.SplitCooldownTimer.Start();
     vars.PreventStartSplitTimer.Start();
 
-
     //Helper function that sets or removes text depending on whether the setting is enabled - only works in `init` or later because `startup` cannot read setting values
     vars.SetTextIfEnabled = (Action<string, object>)((text1, text2) =>
 {
@@ -145,10 +145,13 @@ init
     {
     var OM = mono["ObjectiveManager"];
     var FPSC = mono["FirstPersonController"];
+    var UPI = mono["Unity.InputSystem", "UnityEngine.InputSystem.PlayerInput"];
     var TMPro = mono["Unity.TextMeshPro", "TMPro.TextMeshProUGUI"];
     vars.Helper["chapterTitle"] = OM.MakeString("Instance", "currentChapterTitle");
     vars.Helper["chapterSubtitle"] = OM.MakeString("Instance", "currentChapterSubtitle");
     vars.Helper["objective"] = OM.MakeString("Instance", "currentObjective");
+    vars.Helper["moveX"] = FPSC.Make<float>("Instance", "_input", 0x20);
+    vars.Helper["moveY"] = FPSC.Make<float>("Instance", "_input", 0x24);
     vars.Helper["Speed"] = FPSC.Make<float>("Instance", "_moveVelocity");
     return true;
     });
@@ -163,14 +166,21 @@ init
 update
 {
     vars.Watch(old, current, "objective");
+    vars.Watch(old, current, "moveX");
+    vars.Watch(old, current, "moveY");
     vars.Watch(old, current, "Speed");
 
     if (current.loadingScene == "MainMenu" && current.activeScene == "DemoEnding") 
 	{
 		print("End Split Offset Executed Successfully");
-		const double Offset = 39.367;
+		const double Offset = 39.367f;
 		timer.LoadingTimes += TimeSpan.FromSeconds(Offset);
 	}
+
+    if (old.objective != "Interact with the diorama" && current.objective == "Interact with the diorama")
+    {
+        vars.isAtStartOfRun = false;
+    }
 
     //error handling
     if(current.chapterTitle == null){current.chapterTitle = "null";}
@@ -184,11 +194,19 @@ update
     vars.SetTextIfEnabled("Chapter: ",current.chapterTitle);
     vars.SetTextIfEnabled("Sub-Chapter: ",current.chapterSubtitle);
     vars.SetTextIfEnabled("Objective: ",current.objective);
+    vars.SetTextIfEnabled("moveX",current.moveX);
+    vars.SetTextIfEnabled("moveY",current.moveY);
+    vars.SetTextIfEnabled("isAtStartOfRun",vars.isAtStartOfRun);
+    vars.SetTextIfEnabled("Speed: ",current.Speed);
 
     //Get the current active scene's name and set it to `current.activeScene` - sometimes, it is null, so fallback to old value
     current.activeScene = vars.Helper.Scenes.Active.Name ?? current.activeScene;
     //Usually the scene that's loading, a bit jank in this version of asl-help
     current.loadingScene = vars.Helper.Scenes.Loaded[0].Name ?? current.loadingScene;
+    if(!String.IsNullOrWhiteSpace(vars.Helper.Scenes.Active.Name))    current.activeScene = vars.Helper.Scenes.Active.Name;
+    if(!String.IsNullOrWhiteSpace(vars.Helper.Scenes.Loaded[0].Name))    current.loadingScene = vars.Helper.Scenes.Loaded[0].Name;
+    if(current.activeScene != old.activeScene) vars.Log("active: Old: \"" + old.activeScene + "\", Current: \"" + current.activeScene + "\"");
+    if(current.loadingScene != old.loadingScene) vars.Log("loading: Old: \"" + old.loadingScene + "\", Current: \"" + current.loadingScene + "\"");
 
     //Log changes to the active scene
     if (old.activeScene != current.activeScene)   {vars.Log("activeScene: " + old.activeScene + " -> " + current.activeScene);}
@@ -204,11 +222,10 @@ update
 
 start
 {
-    if (old.loadingScene != "VegetablePatch" && current.loadingScene == "VegetablePatch")
+    if (old.moveY == 0 && current.moveY == 1 && vars.isAtStartOfRun == true)
     {
         vars.SplitCooldownTimer.Restart();
         vars.PreventStartSplitTimer.Restart();
-        vars.startTimeOffsetFlag = true;
         timer.IsGameTimePaused = true;
         return true;
     }
@@ -218,6 +235,11 @@ onStart
 {
     vars.Log("activeScene: " + current.activeScene);
     vars.Log("loadingScene: " + current.loadingScene);
+}
+
+onReset
+{
+    vars.isAtStartOfRun = true;
 }
 
 split
@@ -237,16 +259,8 @@ split
 
 isLoading
 {
-    return vars.SceneLoading == "Loading";
-}
-
-gameTime
-{
-    if(vars.startTimeOffsetFlag) 
-    {
-        vars.startTimeOffsetFlag = false;
-        return TimeSpan.FromSeconds(vars.startTimeOffset);
-    }
+  if(current.loadingScene != current.activeScene) return true;
+  else return false;
 }
 
 exit
@@ -255,3 +269,4 @@ exit
     if (settings["removeTexts"])
     vars.RemoveAllTexts();
 }
+
